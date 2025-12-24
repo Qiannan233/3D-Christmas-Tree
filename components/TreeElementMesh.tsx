@@ -1,27 +1,55 @@
+
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ShapeType, TreeElement, MaterialType } from '../types';
+import '../types';
 
 interface Props {
   data: TreeElement;
-  intensity: number; // 0 (tree) to 1 (exploded)
+  intensity: number; 
+  isMusicPlaying: boolean;
+  audioRef: React.RefObject<HTMLAudioElement>;
 }
 
-const TreeElementMesh: React.FC<Props> = ({ data, intensity }) => {
+const TreeElementMesh: React.FC<Props> = ({ data, intensity, isMusicPlaying, audioRef }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const targetPos = new THREE.Vector3();
 
   useFrame((state, delta) => {
     if (!meshRef.current) return;
 
+    // 使用音频播放时间确保绝对同步
+    const time = audioRef.current ? audioRef.current.currentTime : 0;
+    
+    let beatFactor = 0;
+    if (isMusicPlaying) {
+      const bpm = 120;
+      const beatTrack = time * Math.PI * (bpm / 60);
+      
+      // 降低指数（2.5 -> 1.8）：使波形更饱满，跳动时的峰值更“圆润”，视觉上停留时间变长，从而感觉变慢
+      beatFactor = Math.pow(Math.abs(Math.sin(beatTrack)), 1.8);
+    }
+
+    // 计算基础位置（树形与爆发态的线性插值）
     targetPos.lerpVectors(data.treePos, data.scatterPos, intensity);
     
-    const time = state.clock.getElapsedTime();
-    const noise = Math.sin(time + parseFloat(data.id.split('-')[1] || '0') * 0.1) * 0.05;
-    targetPos.y += noise;
+    // 节奏位移方向：沿树体法线向外
+    if (beatFactor > 0) {
+      const dir = data.treePos.clone().normalize();
+      if (data.treePos.length() > 0.01) {
+        // 维持偏移幅度，位移速度通过 lerp 控制
+        targetPos.addScaledVector(dir, 0.25 * beatFactor);
+      } else {
+        targetPos.y += 0.25 * beatFactor;
+      }
+    }
 
-    meshRef.current.position.lerp(targetPos, 0.1);
+    // 关键修改：平滑追踪系数从 0.1 降到 0.05（慢了一倍）
+    // 这会让零件对目标位置的响应变得非常迟缓、富有弹性，产生更深沉的节奏跟随感
+    meshRef.current.position.lerp(targetPos, 0.05);
+    
+    // 旋转速度维持不变，保持艺术美感
     meshRef.current.rotation.x += delta * 0.08;
     meshRef.current.rotation.y += delta * 0.12;
   });
@@ -51,12 +79,11 @@ const TreeElementMesh: React.FC<Props> = ({ data, intensity }) => {
   const getMaterialProps = () => {
     switch (data.materialType) {
       case MaterialType.GLASS:
-        // Frosted Glass (毛玻璃) Effect
         return {
           color: data.color,
-          transmission: 0.95, // High light throughput
-          thickness: 2.0,     // Simulate physical depth
-          roughness: 0.65,    // Key for frosted look
+          transmission: 0.95,
+          thickness: 2.0,
+          roughness: 0.65,
           metalness: 0.02,
           transparent: true,
           opacity: 0.9,
@@ -66,11 +93,10 @@ const TreeElementMesh: React.FC<Props> = ({ data, intensity }) => {
           clearcoatRoughness: 0.1
         };
       case MaterialType.METAL:
-        // Reduced Metalness - More like Matte Anodized Aluminum
         return {
           color: data.color,
           roughness: 0.75, 
-          metalness: 0.4,  // Reduced from 0.9
+          metalness: 0.4,
           envMapIntensity: 0.4 
         };
       case MaterialType.WIREFRAME:

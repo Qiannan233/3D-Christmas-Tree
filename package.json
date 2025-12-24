@@ -1,5 +1,5 @@
 {
-  "name": "constructivist-3d-christmas-tree",
+  "name": "merry-xmas",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -14,7 +14,8 @@
     "three": "^0.182.0",
     "@react-three/fiber": "^9.4.2",
     "@react-three/drei": "^10.7.7",
-    "@heroicons/react": "^2.2.0"
+    "@heroicons/react": "^2.2.0",
+    "this": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

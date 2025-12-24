@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import { ShapeType, TreeElement, MaterialType } from '../types';
 
@@ -30,7 +31,8 @@ export const generateTreeElements = (count: number): TreeElement[] => {
     ShapeType.SPHERE,
     ShapeType.TRIANGLE,
     ShapeType.BOX,
-    ShapeType.CYLINDER
+    ShapeType.CYLINDER,
+    ShapeType.CONE
   ];
 
   // Increase diversity by allowing more colors in one tree

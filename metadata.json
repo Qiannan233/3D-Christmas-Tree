@@ -1,5 +1,5 @@
 {
-  "name": "Constructivist 3D Christmas Tree",
+  "name": "Merry Xmas",
   "description": "An interactive 3D Christmas tree inspired by Constructivist sculpture, controllable via hand gestures using your camera.",
   "requestFramePermissions": [
     "camera"

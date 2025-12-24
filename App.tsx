@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Environment, PerspectiveCamera, ContactShadows } from '@react-three/drei';
@@ -5,9 +6,10 @@ import * as THREE from 'three';
 import ConstructivistTree from './components/ConstructivistTree';
 import { generateTreeElements } from './utils/math';
 import { TreeElement } from './types';
+import './types'; // Ensure JSX intrinsic elements augmentation is active
 import { 
-  ArrowPathIcon, 
-  PhotoIcon,
+  SparklesIcon, 
+  CameraIcon,
   HandRaisedIcon,
   SpeakerXMarkIcon,
   MusicalNoteIcon
@@ -88,7 +90,6 @@ const MagicCursor: React.FC = () => {
           }}
         />
       ))}
-      
       <div 
         className="fixed pointer-events-none rounded-full z-[9999] transform -translate-x-1/2 -translate-y-1/2" 
         style={{ 
@@ -100,44 +101,35 @@ const MagicCursor: React.FC = () => {
           boxShadow: '0 0 25px rgba(57, 255, 20, 0.5)'
         }} 
       />
-      
-      <div 
-        className="fixed pointer-events-none rounded-full z-[10000] transform -translate-x-1/2 -translate-y-1/2 border border-white/20" 
-        style={{ 
-          left: `${displayPos.current.x}px`, 
-          top: `${displayPos.current.y}px`,
-          width: '10px',
-          height: '10px',
-          backgroundColor: '#004225',
-          boxShadow: '0 0 10px rgba(0, 66, 37, 0.8)'
-        }} 
-      />
     </>
   );
 };
 
-const SceneContent: React.FC<{ elements: TreeElement[], explosionIntensity: number, treeRotation: number, isMusicPlaying: boolean, responsiveScale: number }> = ({ elements, explosionIntensity, treeRotation, isMusicPlaying, responsiveScale }) => {
+const SceneContent: React.FC<{ 
+  elements: TreeElement[], 
+  explosionIntensity: number, 
+  treeRotation: number, 
+  isMusicPlaying: boolean, 
+  responsiveScale: number,
+  audioRef: React.RefObject<HTMLAudioElement>
+}> = ({ elements, explosionIntensity, treeRotation, isMusicPlaying, responsiveScale, audioRef }) => {
   const groupRef = useRef<THREE.Group>(null);
   const ambientRef = useRef<THREE.AmbientLight>(null);
-  const spotRef = useRef<THREE.SpotLight>(null);
 
   useFrame((state) => {
-    const time = state.clock.getElapsedTime();
-    const beat = Math.sin(time * Math.PI * 2);
+    const time = audioRef.current ? audioRef.current.currentTime : state.clock.getElapsedTime();
+    const bpm = 120;
+    const beat = Math.sin(time * Math.PI * (bpm / 60));
     
     if (isMusicPlaying && groupRef.current) {
-      const pulse = Math.max(0, beat) * 0.015;
+      const pulse = Math.max(0, beat) * 0.012;
       groupRef.current.scale.set(responsiveScale + pulse, responsiveScale + pulse, responsiveScale + pulse);
     } else if (groupRef.current) {
       groupRef.current.scale.set(responsiveScale, responsiveScale, responsiveScale);
     }
 
     if (ambientRef.current) {
-      ambientRef.current.intensity = 0.4 + (isMusicPlaying ? Math.max(0, beat) * 0.2 : 0);
-    }
-
-    if (spotRef.current) {
-      spotRef.current.intensity = 1.8 + (isMusicPlaying ? Math.abs(beat) * 1.2 : 0);
+      ambientRef.current.intensity = 0.4 + (isMusicPlaying ? Math.max(0, beat) * 0.15 : 0);
     }
   });
 
@@ -147,11 +139,17 @@ const SceneContent: React.FC<{ elements: TreeElement[], explosionIntensity: numb
       <OrbitControls makeDefault enableDamping dampingFactor={0.05} minDistance={10} maxDistance={70} />
       
       <ambientLight ref={ambientRef} intensity={0.5} />
-      <spotLight ref={spotRef} position={[15, 35, 15]} angle={0.3} penumbra={0.8} intensity={2} castShadow />
+      <spotLight position={[15, 35, 15]} angle={0.3} penumbra={0.8} intensity={2} castShadow />
       <pointLight position={[-15, 10, -10]} intensity={0.3} color="#ffffff" />
       
       <group ref={groupRef}>
-        <ConstructivistTree elements={elements} explosionIntensity={explosionIntensity} rotationY={treeRotation} />
+        <ConstructivistTree 
+          elements={elements} 
+          explosionIntensity={explosionIntensity} 
+          rotationY={treeRotation} 
+          isMusicPlaying={isMusicPlaying}
+          audioRef={audioRef}
+        />
       </group>
       
       <ContactShadows position={[0, -6.5 * responsiveScale, 0]} opacity={0.12} scale={60 * responsiveScale} blur={3.5} far={10} />
@@ -166,20 +164,70 @@ const App: React.FC = () => {
   const [treeRotation, setTreeRotation] = useState(0);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
-  const [audioError, setAudioError] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [responsiveScale, setResponsiveScale] = useState(window.innerWidth < 768 ? 0.65 : 1);
   
+  // Draggable state
+  const [cameraPos, setCameraPos] = useState({ x: 16, y: 0 }); 
+  const isDragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     const handleResize = () => {
-      setResponsiveScale(window.innerWidth < 768 ? 0.65 : 1);
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      setResponsiveScale(mobile ? 0.65 : 1);
+      // Adjust camera initial Y to stay at the bottom left area
+      if (cameraPos.y === 0) {
+        setCameraPos(prev => ({ ...prev, y: window.innerHeight - (mobile ? 200 : 220) }));
+      }
     };
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    isDragging.current = true;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    dragOffset.current = {
+      x: clientX - cameraPos.x,
+      y: clientY - cameraPos.y
+    };
+  };
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDragging.current) return;
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      
+      let newX = clientX - dragOffset.current.x;
+      let newY = clientY - dragOffset.current.y;
+      
+      newX = Math.max(0, Math.min(newX, window.innerWidth - (isMobile ? 96 : 280)));
+      newY = Math.max(0, Math.min(newY, window.innerHeight - (isMobile ? 128 : 158)));
+
+      setCameraPos({ x: newX, y: newY });
+    };
+    const handleEnd = () => { isDragging.current = false; };
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove);
+    window.addEventListener('touchend', handleEnd);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+    };
+  }, [isMobile]);
 
   const toggleMusic = () => {
     if (!audioRef.current) return;
@@ -187,194 +235,136 @@ const App: React.FC = () => {
       audioRef.current.pause();
       setIsMusicPlaying(false);
     } else {
-      audioRef.current.play()
-        .then(() => {
-          setIsMusicPlaying(true);
-          setAudioError(false);
-        })
-        .catch(() => setAudioError(true));
+      audioRef.current.play().then(() => setIsMusicPlaying(true));
     }
   };
 
-  const handleRegenerate = () => {
-    setElements(generateTreeElements(100));
-  };
+  const handleRegenerate = () => setElements(generateTreeElements(100));
 
   const handleCaptureImage = () => {
-    const webglCanvas = document.querySelector('canvas');
+    const webglCanvas = document.querySelector('canvas') as HTMLCanvasElement;
     if (!webglCanvas) return;
 
     const offscreen = document.createElement('canvas');
     const ctx = offscreen.getContext('2d');
     if (!ctx) return;
 
+    // Use actual WebGL canvas dimensions for high resolution
     offscreen.width = webglCanvas.width;
     offscreen.height = webglCanvas.height;
 
-    // 1. Draw Background
+    // Fill background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, offscreen.width, offscreen.height);
-
-    // 2. Draw 3D Render
+    
+    // Draw 3D Tree
     ctx.drawImage(webglCanvas, 0, 0);
 
-    // 3. Draw Title Overlay
-    const margin = offscreen.width * 0.05;
-    
-    // Rockin' Around
-    ctx.fillStyle = '#000000';
-    ctx.font = `italic 300 ${offscreen.width * 0.04}px "Cormorant Garamond", serif`;
+    const wRatio = offscreen.width / window.innerWidth;
+    const hRatio = offscreen.height / window.innerHeight;
+
+    // NOTE: Per user request, we NO LONGER draw the camera preview frame on the captured image.
+
+    const scale = offscreen.width / 1200; 
+    const paddingX = 48 * wRatio;
+    const paddingY = 48 * hRatio;
+
+    // Draw Text Overlays
+    ctx.fillStyle = '#1a1a1a';
     ctx.textBaseline = 'top';
-    ctx.fillText("Rockin' Around", margin, margin);
+    ctx.textAlign = 'left';
 
-    // The Christmas Tree (Anchor width)
-    const mainTitle = "The Christmas Tree";
-    const mainTitleFontSize = offscreen.width * 0.055;
-    ctx.font = `600 ${mainTitleFontSize}px "Cormorant Garamond", serif`;
-    const mainTitleWidth = ctx.measureText(mainTitle).width;
-    const mainTitleY = margin + (offscreen.width * 0.05);
-    ctx.fillText(mainTitle, margin, mainTitleY);
+    // Title line 1
+    ctx.font = `italic 300 ${Math.round(48 * scale)}px "Cormorant Garamond", serif`;
+    ctx.fillText("Rockin' Around", paddingX, paddingY);
 
-    // Separator line (matching width ratio)
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    ctx.fillRect(margin, mainTitleY + (offscreen.width * 0.075), mainTitleWidth * 0.2, 2);
+    // Title line 2
+    ctx.font = `600 ${Math.round(60 * scale)}px "Cormorant Garamond", serif`;
+    ctx.fillText("The Christmas Tree", paddingX, paddingY + (52 * scale));
 
-    // Subtitle Line: Scaled to match mainTitleWidth
-    const subtitle = "DIGITAL SCULPTURE • SPATIAL CONSTRUCT";
-    const subtitleFontSize = offscreen.width * 0.012;
-    ctx.font = `400 ${subtitleFontSize}px "Montserrat", sans-serif`;
-    
-    // Distribute letters to match mainTitleWidth
-    const chars = subtitle.split('');
-    const charWidths = chars.map(c => ctx.measureText(c).width);
-    const totalCharWidth = charWidths.reduce((a, b) => a + b, 0);
-    const availableSpace = mainTitleWidth - totalCharWidth;
-    const spacing = availableSpace / (chars.length - 1);
+    // Separator
+    ctx.beginPath();
+    ctx.moveTo(paddingX, paddingY + (130 * scale));
+    ctx.lineTo(paddingX + (220 * scale), paddingY + (130 * scale));
+    ctx.lineWidth = 1.5 * scale;
+    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+    ctx.stroke();
 
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    let xOffset = margin;
-    chars.forEach((char) => {
-      ctx.fillText(char, xOffset, mainTitleY + (offscreen.width * 0.09));
-      xOffset += ctx.measureText(char).width + spacing;
-    });
+    // Subtitle
+    ctx.font = `400 ${Math.round(11 * scale)}px "Montserrat", sans-serif`;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    if ('letterSpacing' in ctx) (ctx as any).letterSpacing = `${3 * scale}px`;
+    ctx.fillText("Digital Sculpture • Constructivist Art", paddingX, paddingY + (145 * scale));
 
-    // Footer Attribution
-    ctx.textAlign = 'right';
-    ctx.font = `italic 300 ${offscreen.width * 0.025}px "Cormorant Garamond", serif`;
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.fillText("Volume, Form & Magic", offscreen.width - margin, offscreen.height - margin - (offscreen.width * 0.025));
-    
-    ctx.font = `400 ${offscreen.width * 0.008}px "Montserrat", sans-serif`;
-    ctx.letterSpacing = '1em';
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    ctx.fillText("EXPERIMENTAL HOLIDAY ART", offscreen.width - margin, offscreen.height - margin);
+    // Footer
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${Math.round(10 * scale)}px "Montserrat", sans-serif`;
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    if ('letterSpacing' in ctx) (ctx as any).letterSpacing = `${6 * scale}px`;
+    ctx.fillText("Powered by Enclave Studio", offscreen.width / 2, offscreen.height - (24 * hRatio));
 
+    // Download link
     const link = document.createElement('a');
-    link.download = `rockin-tree-poster-${Date.now()}.png`;
-    link.href = offscreen.toDataURL('image/png');
+    link.download = `christmas-tree-${Date.now()}.png`;
+    link.href = offscreen.toDataURL('image/png', 1.0);
     link.click();
   };
 
   useEffect(() => {
     if (!isCameraActive) return;
-
-    let hands: any;
-    let faceDetection: any;
-    let camera: any;
+    let hands: any, faceDetection: any, camera: any;
 
     const loadMediaPipe = async () => {
       if (!(window as any).Hands) {
         const handsScript = document.createElement('script');
         handsScript.src = `${HANDS_CDN}/hands.js`;
         document.head.appendChild(handsScript);
-        
         const faceScript = document.createElement('script');
         faceScript.src = `${FACE_DETECTION_CDN}/face_detection.js`;
         document.head.appendChild(faceScript);
-
         const cameraScript = document.createElement('script');
         cameraScript.src = `${CAMERA_CDN}/camera_utils.js`;
         document.head.appendChild(cameraScript);
         await new Promise(r => setTimeout(r, 1500)); 
       }
-
       if (!(window as any).Hands || !(window as any).FaceDetection) return;
-
       hands = new (window as any).Hands({ locateFile: (f: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
       hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-      
       faceDetection = new (window as any).FaceDetection({ locateFile: (f: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}` });
       faceDetection.setOptions({ model: 'short', minDetectionConfidence: 0.88 });
-
       let lastFaceResults: any = null;
       faceDetection.onResults((r: any) => { lastFaceResults = r; });
-
       hands.onResults((results: any) => {
         if (results.multiHandLandmarks?.[0]) {
           const landmarks = results.multiHandLandmarks[0];
-          
-          const palmBase = landmarks[0];
-          const fingerTips = [8, 12, 16, 20];
-          const fingerJoints = [5, 9, 13, 17];
-          
-          let closedFingersCount = 0;
-          fingerTips.forEach((tipIdx, i) => {
-            const tip = landmarks[tipIdx];
-            const joint = landmarks[fingerJoints[i]];
-            const distTip = Math.sqrt(Math.pow(tip.x - palmBase.x, 2) + Math.pow(tip.y - palmBase.y, 2));
-            const distJoint = Math.sqrt(Math.pow(joint.x - palmBase.x, 2) + Math.pow(joint.y - palmBase.y, 2));
-            if (distTip < distJoint * 1.15) closedFingersCount++;
-          });
-          
-          if (closedFingersCount >= 3) {
-            setExplosionIntensity(prev => THREE.MathUtils.lerp(prev, 0, 0.25));
-          } else {
-            const thumb = landmarks[4];
-            const index = landmarks[8];
-            const dist = Math.sqrt(Math.pow(thumb.x - index.x, 2) + Math.pow(thumb.y - index.y, 2));
-            const targetIntensity = Math.min(Math.max((dist - 0.05) / 0.35, 0), 1);
-            setExplosionIntensity(prev => THREE.MathUtils.lerp(prev, targetIntensity, 0.15));
-          }
-
-          const targetRotation = -(landmarks[9].x - 0.5) * Math.PI * 2.5;
-          setTreeRotation(prev => THREE.MathUtils.lerp(prev, targetRotation, 0.1));
+          const thumb = landmarks[4], index = landmarks[8];
+          const dist = Math.sqrt(Math.pow(thumb.x - index.x, 2) + Math.pow(thumb.y - index.y, 2));
+          // Use THREE.MathUtils.lerp safely
+          setExplosionIntensity(prev => THREE.MathUtils.lerp(prev, Math.min(Math.max((dist - 0.05) / 0.35, 0), 1), 0.15));
+          setTreeRotation(prev => THREE.MathUtils.lerp(prev, -(landmarks[9].x - 0.5) * Math.PI * 2.5, 0.1));
         } else {
           setExplosionIntensity(prev => THREE.MathUtils.lerp(prev, 0, 0.05));
         }
-
         if (canvasRef.current && results.image) {
           const ctx = canvasRef.current.getContext('2d');
           if (ctx) {
             const canvas = canvasRef.current;
             canvas.width = results.image.width;
             canvas.height = results.image.height;
-            ctx.save();
-            ctx.scale(-1, 1);
-            ctx.translate(-canvas.width, 0);
+            ctx.save(); ctx.scale(-1, 1); ctx.translate(-canvas.width, 0);
             ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-            
             if (lastFaceResults?.detections) {
               lastFaceResults.detections.forEach((d: any) => {
                 const box = d.boundingBox;
-                const score = (d.score && Array.isArray(d.score)) ? d.score[0] : (d.score || 0);
-                
-                const aspect = box.width / box.height;
-                const isLikelyFace = score > 0.88 && box.width > 0.08 && aspect > 0.6 && aspect < 1.6;
-
-                if (isLikelyFace) {
-                  const emojiSize = Math.max(box.width * canvas.width, box.height * canvas.height) * 1.5;
-                  ctx.font = `${emojiSize}px serif`;
-                  ctx.textAlign = 'center';
-                  ctx.textBaseline = 'middle';
-                  ctx.fillText('🧑‍🎄', box.xCenter * canvas.width, box.yCenter * canvas.height);
-                }
+                const emojiSize = Math.max(box.width * canvas.width, box.height * canvas.height) * 1.5;
+                ctx.font = `${emojiSize}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('🧑‍🎄', box.xCenter * canvas.width, box.yCenter * canvas.height);
               });
             }
             ctx.restore();
           }
         }
       });
-
       if (videoRef.current) {
         camera = new (window as any).Camera(videoRef.current, {
           onFrame: async () => {
@@ -382,115 +372,101 @@ const App: React.FC = () => {
               await faceDetection.send({ image: videoRef.current });
               await hands.send({ image: videoRef.current });
             }
-          },
-          width: 640,
-          height: 480
+          }, width: 640, height: 480
         });
         camera.start();
       }
     };
-
     loadMediaPipe();
-    return () => {
-      camera?.stop();
-      hands?.close();
-      faceDetection?.close();
-    };
+    return () => { camera?.stop(); hands?.close(); faceDetection?.close(); };
   }, [isCameraActive]);
 
-  const SubtitleChars = "DIGITAL SCULPTURE • SPATIAL CONSTRUCT".split("");
+  const SubtitleChars = "Digital Sculpture • Constructivist Art".split("");
 
   return (
     <div className="relative w-full h-full bg-white font-sans text-[#1a1a1a] overflow-hidden select-none">
-      <MagicCursor />
-      <audio ref={audioRef} src={AUDIO_SRC} loop crossOrigin="anonymous" onError={() => setAudioError(true)} />
-      <div className="absolute opacity-0 pointer-events-none w-0 h-0 overflow-hidden">
-        <video ref={videoRef} playsInline muted />
-      </div>
+      {!isMobile && <MagicCursor />}
+      <audio ref={audioRef} src={AUDIO_SRC} loop crossOrigin="anonymous" />
+      <div className="absolute opacity-0 pointer-events-none w-0 h-0 overflow-hidden"><video ref={videoRef} playsInline muted /></div>
 
       <Canvas shadows dpr={[1, 2]} gl={{ preserveDrawingBuffer: true }}>
         <SceneContent 
-          elements={elements} 
-          explosionIntensity={explosionIntensity} 
-          treeRotation={treeRotation} 
-          isMusicPlaying={isMusicPlaying} 
-          responsiveScale={responsiveScale}
+          elements={elements} explosionIntensity={explosionIntensity} 
+          treeRotation={treeRotation} isMusicPlaying={isMusicPlaying} 
+          responsiveScale={responsiveScale} audioRef={audioRef}
         />
       </Canvas>
 
-      <div className={`absolute bottom-8 left-8 w-40 sm:w-56 h-32 sm:h-40 bg-white rounded-xl overflow-hidden border border-black/5 shadow-2xl transition-all ${isCameraActive ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-8 scale-95 pointer-events-none'}`}>
-        <canvas ref={canvasRef} className="w-full h-full object-contain bg-neutral-50" />
-        <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/40 backdrop-blur-md rounded text-[7px] sm:text-[9px] text-white uppercase tracking-widest font-bold font-sans">Live Tracking</div>
-      </div>
-
-      <div className="absolute top-6 sm:top-12 left-6 sm:left-12">
-        <div className="flex flex-col">
-          <h2 className="text-3xl sm:text-5xl font-serif italic font-light tracking-tight text-black mb-1 sm:mb-2">Rockin' Around</h2>
-          <div className="relative w-fit">
-            <h1 className="text-4xl sm:text-6xl font-serif font-semibold tracking-tighter text-black leading-none whitespace-nowrap">
-              The Christmas Tree
-            </h1>
-            <div className="h-px w-1/4 bg-black/10 my-3 sm:my-4" />
-            <div className="flex justify-between w-full">
-              {SubtitleChars.map((char, idx) => (
-                <span key={idx} className="text-[7px] sm:text-[10px] font-sans uppercase text-black/40 leading-none">
-                  {char === " " ? "\u00A0" : char}
-                </span>
-              ))}
-            </div>
-          </div>
+      {/* Header Branding - Responsive Sizes for Desktop */}
+      <div className="absolute top-6 md:top-12 lg:top-20 left-6 md:left-12 lg:left-20 pointer-events-none">
+        <h2 className="text-3xl md:text-5xl lg:text-6xl font-serif italic font-light tracking-tight mb-1 text-black">Rockin' Around</h2>
+        <h1 className="text-4xl md:text-6xl lg:text-7xl xl:text-8xl font-serif font-semibold tracking-tighter text-black leading-none">The Christmas Tree</h1>
+        <div className="h-px w-20 md:w-32 lg:w-40 bg-black/10 my-3 md:my-6" />
+        <div className="flex justify-between w-full max-w-[280px] md:max-w-[450px] lg:max-w-[600px]">
+          {SubtitleChars.map((char, idx) => (
+            <span key={idx} className="text-[8px] md:text-[10px] lg:text-[12px] font-sans uppercase text-black/40 leading-none">{char === " " ? "\u00A0" : char}</span>
+          ))}
         </div>
       </div>
 
-      {/* Top Right Music Button with custom glass styles and animation */}
-      <div className="absolute top-6 sm:top-12 right-6 sm:right-12 z-50">
-        <button 
-          onClick={toggleMusic} 
-          className={`
-            group relative p-3 sm:p-4 rounded-full transition-all duration-500 shadow-xl overflow-hidden glass-ui
-            ${isMusicPlaying ? 'bg-black text-white scale-110 animate-slow-rotate ring-2 ring-black/5' : 'bg-white/70 text-black/40 hover:text-black hover:bg-white'}
-          `}
-          title={isMusicPlaying ? "Pause Music" : "Play Music"}
-        >
-          <MusicalNoteIcon className={`w-6 h-6 sm:w-7 sm:h-7 transition-transform duration-300 ${isMusicPlaying ? 'scale-110' : 'scale-100'}`} />
-          
-          {/* Subtle glow for playing state */}
-          {isMusicPlaying && (
-            <div className="absolute inset-0 bg-white/10 blur-xl rounded-full" />
-          )}
+      {/* Music Toggle - Top Right with Rotation */}
+      <div className="absolute top-6 sm:top-10 right-6 sm:right-10 z-[100]">
+        <button onClick={toggleMusic} className={`p-3.5 rounded-full transition-all duration-500 shadow-lg glass-ui flex items-center justify-center ${isMusicPlaying ? 'bg-black text-white scale-110' : 'text-black/30 hover:text-black hover:bg-white'}`}>
+          <MusicalNoteIcon className={`w-6 h-6 md:w-8 md:h-8 ${isMusicPlaying ? 'animate-music-rotate' : ''}`} />
         </button>
       </div>
 
-      <div className="absolute bottom-6 sm:bottom-12 left-1/2 -translate-x-1/2 flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-6 glass-ui px-4 sm:px-8 py-3 sm:py-4 rounded-3xl sm:rounded-2xl shadow-sm border border-black/[0.03] scale-90 sm:scale-100">
-        <div className="flex items-center space-x-4 sm:space-x-6">
-          <button onClick={() => setIsCameraActive(!isCameraActive)} className={`p-2 sm:p-3 rounded-xl transition-all ${isCameraActive ? 'bg-black text-white' : 'text-black/40 hover:text-black hover:bg-black/5'}`}>
-            <HandRaisedIcon className="w-5 h-5 sm:w-6 sm:h-6 stroke-[1.5]" />
-          </button>
-          <div className="w-px h-6 sm:h-10 bg-black/5" />
-          <div className="flex flex-col items-center px-1 sm:px-4">
-            <input type="range" min="0" max="1" step="0.001" value={explosionIntensity} onChange={(e) => setExplosionIntensity(parseFloat(e.target.value))} className="w-24 sm:w-32 h-[1px] bg-black/10 appearance-none cursor-pointer accent-black" />
-            <span className="text-[7px] sm:text-[8px] font-sans uppercase text-black/20 tracking-[0.2em] mt-2 sm:mt-3">Structure</span>
-          </div>
+      {/* DRAGGABLE CAMERA PREVIEW */}
+      <div 
+        onMouseDown={handleDragStart} onTouchStart={handleDragStart}
+        className={`fixed cursor-grab active:cursor-grabbing bg-white rounded-xl overflow-hidden border border-black/5 shadow-2xl z-[60] transition-opacity duration-500 ${isCameraActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        style={{
+          left: `${cameraPos.x}px`, top: `${cameraPos.y}px`,
+          width: isMobile ? '96px' : '220px', height: isMobile ? '128px' : '150px'
+        }}
+      >
+        <canvas ref={canvasRef} className="w-full h-full object-contain bg-neutral-100" />
+        <div className="absolute bottom-1.5 left-1.5 flex items-center space-x-1 opacity-40 pointer-events-none">
+           <div className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+           <span className="text-[7px] font-bold uppercase tracking-widest text-black">LIVE</span>
         </div>
+      </div>
 
-        <div className="hidden sm:block w-px h-10 bg-black/5" />
-        <div className="sm:hidden w-full h-px bg-black/5" />
+      {/* COMPACT CENTERED NAVIGATION */}
+      <div 
+        className="absolute bottom-6 sm:bottom-10 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 pointer-events-auto"
+        style={{ width: isMobile ? '70vw' : (window.innerWidth < 1200 ? '45vw' : '32vw'), maxWidth: '600px' }}
+      >
+        <div className="flex flex-row items-center glass-ui px-3 sm:px-6 py-2 sm:py-3.5 rounded-full shadow-xl border border-black/[0.03]">
+          <button 
+            onClick={() => setIsCameraActive(!isCameraActive)} 
+            className={`p-2.5 sm:p-3 rounded-full transition-all ${isCameraActive ? 'bg-black text-white' : 'text-black/30 hover:text-black hover:bg-black/5'}`}
+          >
+            <HandRaisedIcon className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
+          </button>
+          
+          <div className="flex-1 flex items-center px-4 sm:px-8 border-x border-black/5 h-full">
+            <input 
+              type="range" min="0" max="1" step="0.001" value={explosionIntensity} 
+              onChange={(e) => setExplosionIntensity(parseFloat(e.target.value))} 
+              className="w-full h-[4px] bg-black/10 appearance-none cursor-pointer accent-black rounded-full outline-none" 
+            />
+          </div>
 
-        <div className="flex items-center space-x-3 sm:space-x-4">
-          <div className="flex space-x-1 sm:space-x-2">
-            <button onClick={handleRegenerate} className="p-2 sm:p-3 text-black/40 hover:text-black hover:bg-black/5 rounded-xl transition-all" title="Regenerate">
-              <ArrowPathIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+          <div className="flex space-x-1.5 sm:space-x-3 ml-2 sm:ml-4">
+            <button onClick={handleRegenerate} className="p-2.5 sm:p-3 text-black/40 hover:text-black hover:bg-black/5 rounded-full transition-all">
+              <SparklesIcon className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
-            <button onClick={handleCaptureImage} className="p-2 sm:p-3 text-black/40 hover:text-black hover:bg-black/5 rounded-xl transition-all" title="Capture">
-              <PhotoIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+            <button onClick={handleCaptureImage} className="p-2.5 sm:p-3 text-black/40 hover:text-black hover:bg-black/5 rounded-full transition-all">
+              <CameraIcon className="w-5 h-5 sm:w-6 sm:h-6" />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="absolute bottom-6 sm:bottom-12 right-6 sm:right-12 text-right pointer-events-none hidden sm:block">
-        <p className="font-serif text-3xl font-light italic leading-none opacity-20">Volume, Form & Magic</p>
-        <p className="font-sans text-[8px] uppercase tracking-[1em] opacity-10 mt-2">Experimental Holiday Art</p>
+      {/* Footer Branding */}
+      <div className="absolute bottom-1.5 sm:bottom-3 left-1/2 -translate-x-1/2 pointer-events-none z-10">
+        <p className="text-[6px] sm:text-[9px] font-sans uppercase tracking-[0.5em] text-black/15 font-bold">POWERED BY ENCLAVE STUDIO</p>
       </div>
     </div>
   );

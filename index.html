@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -45,10 +46,10 @@
     }
 
     .glass-ui {
-      background: rgba(255, 255, 255, 0.75);
+      background: rgba(255, 255, 255, 0.55);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(0, 0, 0, 0.05);
+      border: 1px solid rgba(0, 0, 0, 0.03);
     }
 
     @keyframes slow-rotate {
@@ -57,6 +58,14 @@
     }
     .animate-slow-rotate {
       animation: slow-rotate 8s linear infinite;
+    }
+    
+    @keyframes music-rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-music-rotate {
+      animation: music-rotate 3s linear infinite;
     }
   </style>
 <script type="importmap">
@@ -68,13 +77,13 @@
     "three": "https://esm.sh/three@^0.182.0",
     "@react-three/fiber": "https://esm.sh/@react-three/fiber@^9.4.2",
     "@react-three/drei": "https://esm.sh/@react-three/drei@^10.7.7",
-    "@heroicons/react/": "https://esm.sh/@heroicons/react@^2.2.0/"
+    "@heroicons/react/": "https://esm.sh/@heroicons/react@^2.2.0/",
+    "this": "https://esm.sh/this@^1.1.0"
   }
 }
 </script>
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
 </body>
 </html>
